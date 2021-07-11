@@ -11,8 +11,15 @@ import (
 	"syscall"
 	"text/tabwriter"
 
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/spf13/cobra"
 )
+
+/*
+TODO : Add sorting capabilities from command line
+TODO : Fix lining of all data without long lists
+TODO : Add human readable format
+*/
 
 var listCmd = &cobra.Command{
 	Use:   "list",
@@ -54,8 +61,10 @@ type fileItem struct {
 	fileSize    int64
 }
 
-func getFileType(isDir bool) string {
-	if isDir {
+func getFileType(isSymLink bool, isDir bool) string {
+	if isSymLink {
+		return "symlink"
+	} else if isDir {
 		return "directory"
 	} else {
 		return "file"
@@ -86,20 +95,21 @@ func printShortList(fileList []fileItem, allFlag bool) {
 }
 
 func printLongList(fileList []fileItem, allFlag bool) {
-	w := tabwriter.NewWriter(os.Stdout, 1, 2, 1, ' ', 0)
-	fmt.Fprintln(w, "----", "\t", "-----------", "\t", "---------", "\t", "-----", "\t", "-----", "\t", "-------------")
-	fmt.Fprintln(w, "Name", "\t", "Permissions", "\t", "File Size", "\t", "Owner", "\t", "Group", "\t", "Last Modified")
-	fmt.Fprintln(w, "----", "\t", "-----------", "\t", "---------", "\t", "-----", "\t", "-----", "\t", "-------------")
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"Name", "Permissions", "Type", "Size", "Owner", "Group", "Modified"})
 	for _, myFile := range fileList {
 		if allFlag {
-			fmt.Fprintln(w, myFile.name, "\t", myFile.permissions, "\t", myFile.fileSize, "B\t", myFile.owner, "\t", myFile.group, "\t", myFile.lastMod)
+			t.AppendRow([]interface{}{myFile.name, myFile.permissions, myFile.fileType, myFile.fileSize, myFile.owner, myFile.group, myFile.lastMod})
 		} else {
 			if !myFile.isHidden {
-				fmt.Fprintln(w, myFile.name, "\t", myFile.permissions, "\t", myFile.fileSize, "B\t", myFile.owner, "\t", myFile.group, "\t", myFile.lastMod)
+				t.AppendRow([]interface{}{myFile.name, myFile.permissions, myFile.fileType, myFile.fileSize, myFile.owner, myFile.group, myFile.lastMod})
 			}
 		}
 	}
-	w.Flush()
+	t.AppendSeparator()
+	t.SetStyle(table.StyleColoredBlackOnRedWhite)
+	t.Render()
 }
 
 func getUserFromUid(uid uint32) string {
@@ -131,9 +141,14 @@ func listFiles(path string) []fileItem {
 		stat := file.Sys().(*syscall.Stat_t)
 		owner := getUserFromUid(stat.Gid)
 		group := getGroupFromGid(stat.Gid)
+		isSymLink := false
+		if file.Mode()&os.ModeSymlink == os.ModeSymlink {
+			isSymLink = true
+		}
+
 		fileList = append(fileList, fileItem{
 			name:        file.Name(),
-			fileType:    getFileType(file.IsDir()),
+			fileType:    getFileType(isSymLink, file.IsDir()),
 			permissions: file.Mode().String(),
 			lastMod:     file.ModTime().Format("Jan 1, 2006 - 3:04pm IST"),
 			isHidden:    isFileHidden(file.Name()),
