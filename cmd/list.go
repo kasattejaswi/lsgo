@@ -9,16 +9,17 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"text/tabwriter"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 /*
 TODO : Add sorting capabilities from command line
-TODO : Fix lining of all data without long lists
 TODO : Add human readable format
+TODO : show the symlink location
+TODO : Add colors
 */
 
 var listCmd = &cobra.Command{
@@ -48,6 +49,8 @@ func init() {
 	listCmd.Flags().StringP("path", "p", "", "See contents of a path")
 	listCmd.Flags().BoolP("all", "a", false, "List all files including hidden files")
 	listCmd.Flags().BoolP("long", "l", false, "List all files including hidden files")
+	listCmd.Flags().BoolP("readible", "r", false, "Prints output in human readible format. Works with long lists")
+	listCmd.Flags().StringP("sort", "s", "NAME", "Sorts rows by column names. Works with long lists")
 }
 
 type fileItem struct {
@@ -59,6 +62,16 @@ type fileItem struct {
 	owner       string
 	group       string
 	fileSize    int64
+}
+
+func getTerminalWidth() int {
+	width, _, err := terminal.GetSize(0)
+	if err != nil {
+		fmt.Println("Warning: Unable to read terminal width. Output will be truncated")
+	} else {
+		return width
+	}
+	return 0
 }
 
 func getFileType(isSymLink bool, isDir bool) string {
@@ -80,17 +93,38 @@ func isFileHidden(fileName string) bool {
 }
 
 func printShortList(fileList []fileItem, allFlag bool) {
-	w := tabwriter.NewWriter(os.Stdout, 1, 1, 1, ' ', 0)
+	terminalWidth := getTerminalWidth()
+	maxLength := 0
+	tab := 2
 	for _, myFile := range fileList {
-		if allFlag {
-			fmt.Fprint(w, myFile.name, "\t\t\t")
-		} else {
-			if !myFile.isHidden {
-				fmt.Fprint(w, myFile.name, "\t\t\t")
-			}
+		if maxLength < len(myFile.name) {
+			maxLength = len(myFile.name)
 		}
 	}
-	w.Flush()
+	numC := terminalWidth / (maxLength + tab)
+	printCounter := 1
+	for _, myFile := range fileList {
+		if allFlag {
+			if printCounter == numC {
+				fmt.Println(myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)))
+				printCounter = 1
+			} else {
+				fmt.Print(myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)))
+				printCounter += 1
+			}
+		} else {
+			if !myFile.isHidden {
+				if printCounter == numC {
+					fmt.Println(myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)))
+					printCounter = 1
+				} else {
+					fmt.Print(myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)))
+					printCounter += 1
+				}
+			}
+		}
+
+	}
 	fmt.Println()
 }
 
@@ -108,7 +142,7 @@ func printLongList(fileList []fileItem, allFlag bool) {
 		}
 	}
 	t.AppendSeparator()
-	t.SetStyle(table.StyleColoredBlackOnRedWhite)
+	t.SetStyle(table.StyleBold)
 	t.Render()
 }
 
