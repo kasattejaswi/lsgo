@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -19,7 +20,6 @@ import (
 TODO : Add sorting capabilities from command line
 TODO : Add human readable format
 TODO : show the symlink location
-TODO : Add colors
 */
 
 var listCmd = &cobra.Command{
@@ -32,6 +32,7 @@ Use appropriate flags in order to see such kind of hidden files`,
 		longState, _ := cmd.Flags().GetBool("long")
 		allFlag, _ := cmd.Flags().GetBool("all")
 		pathFlag, _ := cmd.Flags().GetString("path")
+
 		if pathFlag == "" {
 			pathFlag = "."
 		}
@@ -63,6 +64,10 @@ type fileItem struct {
 	group       string
 	fileSize    int64
 }
+
+var colorReset = "\033[0m"
+var colorGreen = "\033[32;1m"
+var colorBlue = "\033[34;1m"
 
 func getTerminalWidth() int {
 	width, _, err := terminal.GetSize(0)
@@ -106,19 +111,47 @@ func printShortList(fileList []fileItem, allFlag bool) {
 	for _, myFile := range fileList {
 		if allFlag {
 			if printCounter == numC {
-				fmt.Println(myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)))
+				switch myFile.fileType {
+				case "directory":
+					fmt.Println(string(colorBlue) + myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)) + string(colorReset))
+				case "symlink":
+					fmt.Println(string(colorGreen) + myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)) + string(colorReset))
+				default:
+					fmt.Println(myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)))
+				}
 				printCounter = 1
 			} else {
-				fmt.Print(myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)))
+				switch myFile.fileType {
+				case "directory":
+					fmt.Print(string(colorBlue) + myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)) + string(colorReset))
+				case "symlink":
+					fmt.Print(string(colorGreen) + myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)) + string(colorReset))
+				default:
+					fmt.Print(myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)))
+				}
 				printCounter += 1
 			}
 		} else {
 			if !myFile.isHidden {
 				if printCounter == numC {
-					fmt.Println(myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)))
+					switch myFile.fileType {
+					case "directory":
+						fmt.Println(string(colorBlue) + myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)) + string(colorReset))
+					case "symlink":
+						fmt.Println(string(colorGreen) + myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)) + string(colorReset))
+					default:
+						fmt.Println(myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)))
+					}
 					printCounter = 1
 				} else {
-					fmt.Print(myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)))
+					switch myFile.fileType {
+					case "directory":
+						fmt.Print(string(colorBlue) + myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)) + string(colorReset))
+					case "symlink":
+						fmt.Print(string(colorGreen) + myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)) + string(colorReset))
+					default:
+						fmt.Print(myFile.name + strings.Repeat(" ", tab+maxLength-len(myFile.name)))
+					}
 					printCounter += 1
 				}
 			}
@@ -131,13 +164,28 @@ func printShortList(fileList []fileItem, allFlag bool) {
 func printLongList(fileList []fileItem, allFlag bool) {
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
-	t.AppendHeader(table.Row{"Name", "Permissions", "Type", "Size", "Owner", "Group", "Modified"})
+	t.AppendHeader(table.Row{"Name", "Permissions", "Size", "Owner", "Group", "Modified"})
 	for _, myFile := range fileList {
 		if allFlag {
-			t.AppendRow([]interface{}{myFile.name, myFile.permissions, myFile.fileType, myFile.fileSize, myFile.owner, myFile.group, myFile.lastMod})
+			switch myFile.fileType {
+			case "directory":
+				t.AppendRow([]interface{}{string(colorBlue) + myFile.name + string(colorReset), myFile.permissions, myFile.fileSize, myFile.owner, myFile.group, myFile.lastMod})
+			case "symlink":
+				t.AppendRow([]interface{}{string(colorGreen) + myFile.name + string(colorReset), myFile.permissions, myFile.fileSize, myFile.owner, myFile.group, myFile.lastMod})
+			default:
+				t.AppendRow([]interface{}{myFile.name, myFile.permissions, myFile.fileSize, myFile.owner, myFile.group, myFile.lastMod})
+			}
+
 		} else {
 			if !myFile.isHidden {
-				t.AppendRow([]interface{}{myFile.name, myFile.permissions, myFile.fileType, myFile.fileSize, myFile.owner, myFile.group, myFile.lastMod})
+				switch myFile.fileType {
+				case "directory":
+					t.AppendRow([]interface{}{string(colorBlue) + myFile.name + string(colorReset), myFile.permissions, myFile.fileSize, myFile.owner, myFile.group, myFile.lastMod})
+				case "symlink":
+					t.AppendRow([]interface{}{string(colorGreen) + myFile.name + string(colorReset), myFile.permissions, myFile.fileSize, myFile.owner, myFile.group, myFile.lastMod})
+				default:
+					t.AppendRow([]interface{}{myFile.name, myFile.permissions, myFile.fileSize, myFile.owner, myFile.group, myFile.lastMod})
+				}
 			}
 		}
 	}
@@ -176,12 +224,17 @@ func listFiles(path string) []fileItem {
 		owner := getUserFromUid(stat.Gid)
 		group := getGroupFromGid(stat.Gid)
 		isSymLink := false
+		fileName := file.Name()
 		if file.Mode()&os.ModeSymlink == os.ModeSymlink {
+			followLink, linkErr := os.Readlink(filepath.Join(path, file.Name()))
+			if linkErr == nil {
+				fileName += " -> " + followLink
+			}
 			isSymLink = true
 		}
 
 		fileList = append(fileList, fileItem{
-			name:        file.Name(),
+			name:        fileName,
 			fileType:    getFileType(isSymLink, file.IsDir()),
 			permissions: file.Mode().String(),
 			lastMod:     file.ModTime().Format("Jan 1, 2006 - 3:04pm IST"),
