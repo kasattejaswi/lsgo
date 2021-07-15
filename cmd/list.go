@@ -16,10 +16,6 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-/*
-TODO : Add sorting capabilities from command line
-*/
-
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Shows the files and folders in the current directory",
@@ -31,11 +27,12 @@ Use appropriate flags in order to see such kind of hidden files`,
 		allFlag, _ := cmd.Flags().GetBool("all")
 		pathFlag, _ := cmd.Flags().GetString("path")
 		readableFlag, _ := cmd.Flags().GetBool("readable")
+		sortFlag, _ := cmd.Flags().GetString("sort")
 		if pathFlag == "" {
 			pathFlag = "."
 		}
 		if longState {
-			printLongList(listFiles(pathFlag, readableFlag), allFlag)
+			printLongList(listFiles(pathFlag, readableFlag), allFlag, sortFlag)
 		} else {
 			printShortList(listFiles(pathFlag, readableFlag), allFlag)
 		}
@@ -49,7 +46,7 @@ func init() {
 	listCmd.Flags().BoolP("all", "a", false, "List all files including hidden files")
 	listCmd.Flags().BoolP("long", "l", false, "List all files including hidden files")
 	listCmd.Flags().BoolP("readable", "r", false, "Prints output in human readable format. Works with long lists")
-	listCmd.Flags().StringP("sort", "s", "NAME", "Sorts rows by column names. Works with long lists")
+	listCmd.Flags().StringP("sort", "s", "NAME", "Sorts rows by column names. Works with long lists. Sorts alphabetically only")
 }
 
 type fileItem struct {
@@ -159,10 +156,10 @@ func printShortList(fileList []fileItem, allFlag bool) {
 	fmt.Println()
 }
 
-func printLongList(fileList []fileItem, allFlag bool) {
+func printLongList(fileList []fileItem, allFlag bool, sortFlag string) {
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
-	t.AppendHeader(table.Row{"Name", "Permissions", "Size", "Owner", "Group", "Modified"})
+	t.AppendHeader(table.Row{"NAME", "PERMISSIONS", "SIZE", "OWNER", "GROUP", "MODIFIED"})
 	for _, myFile := range fileList {
 		if allFlag {
 			switch myFile.fileType {
@@ -189,6 +186,10 @@ func printLongList(fileList []fileItem, allFlag bool) {
 	}
 	t.AppendSeparator()
 	t.SetStyle(table.StyleBold)
+	t.SortBy([]table.SortBy{
+		{Name: strings.ToUpper(sortFlag), Mode: table.Asc},
+	})
+	t.SetAllowedRowLength(getTerminalWidth())
 	t.Render()
 }
 

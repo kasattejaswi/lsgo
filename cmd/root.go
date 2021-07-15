@@ -3,7 +3,7 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 )
-
+	
 var rootCmd = &cobra.Command{
 	Use:   "lsgo",
 	Short: "Go implementation of ls command in bash",
