@@ -18,8 +18,6 @@ import (
 
 /*
 TODO : Add sorting capabilities from command line
-TODO : Add human readable format
-TODO : show the symlink location
 */
 
 var listCmd = &cobra.Command{
@@ -32,14 +30,14 @@ Use appropriate flags in order to see such kind of hidden files`,
 		longState, _ := cmd.Flags().GetBool("long")
 		allFlag, _ := cmd.Flags().GetBool("all")
 		pathFlag, _ := cmd.Flags().GetString("path")
-
+		readableFlag, _ := cmd.Flags().GetBool("readable")
 		if pathFlag == "" {
 			pathFlag = "."
 		}
 		if longState {
-			printLongList(listFiles(pathFlag), allFlag)
+			printLongList(listFiles(pathFlag, readableFlag), allFlag)
 		} else {
-			printShortList(listFiles(pathFlag), allFlag)
+			printShortList(listFiles(pathFlag, readableFlag), allFlag)
 		}
 
 	},
@@ -50,7 +48,7 @@ func init() {
 	listCmd.Flags().StringP("path", "p", "", "See contents of a path")
 	listCmd.Flags().BoolP("all", "a", false, "List all files including hidden files")
 	listCmd.Flags().BoolP("long", "l", false, "List all files including hidden files")
-	listCmd.Flags().BoolP("readible", "r", false, "Prints output in human readible format. Works with long lists")
+	listCmd.Flags().BoolP("readable", "r", false, "Prints output in human readable format. Works with long lists")
 	listCmd.Flags().StringP("sort", "s", "NAME", "Sorts rows by column names. Works with long lists")
 }
 
@@ -62,7 +60,7 @@ type fileItem struct {
 	isHidden    bool
 	owner       string
 	group       string
-	fileSize    int64
+	fileSize    string
 }
 
 var colorReset = "\033[0m"
@@ -213,7 +211,7 @@ func getGroupFromGid(gid uint32) string {
 	return "unknown"
 }
 
-func listFiles(path string) []fileItem {
+func listFiles(path string, readableFlag bool) []fileItem {
 	files, err := ioutil.ReadDir(path)
 	var fileList []fileItem
 	if err != nil {
@@ -225,6 +223,20 @@ func listFiles(path string) []fileItem {
 		group := getGroupFromGid(stat.Gid)
 		isSymLink := false
 		fileName := file.Name()
+		var fileSize string
+		if readableFlag {
+			if stat.Size < 1000 {
+				fileSize = strconv.Itoa(int(stat.Size)) + " B"
+			} else if stat.Size > 1000 && stat.Size < 1e6 {
+				fileSize = strconv.Itoa(int(stat.Size)/1000) + " K"
+			} else if stat.Size > 1e6 && stat.Size < 10e9 {
+				fileSize = strconv.Itoa(int(stat.Size)/1e6) + " M"
+			} else if stat.Size > 1e9 {
+				fileSize = strconv.Itoa(int(stat.Size)/1e9) + " G"
+			}
+		} else {
+			fileSize = strconv.Itoa(int(stat.Size))
+		}
 		if file.Mode()&os.ModeSymlink == os.ModeSymlink {
 			followLink, linkErr := os.Readlink(filepath.Join(path, file.Name()))
 			if linkErr == nil {
@@ -241,7 +253,7 @@ func listFiles(path string) []fileItem {
 			isHidden:    isFileHidden(file.Name()),
 			owner:       owner,
 			group:       group,
-			fileSize:    stat.Size,
+			fileSize:    fileSize,
 		})
 	}
 	return fileList
